@@ -1,0 +1,1 @@
+DOMAIN = "broadlink_manager"

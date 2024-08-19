@@ -1,0 +1,6 @@
+{
+    "abort": {
+      "no_broadlink_devices_found": "No Broadlink IR/RF devices found. Please ensure your devices are integrated with the Broadlink integration and try again."
+    }
+  }
+  

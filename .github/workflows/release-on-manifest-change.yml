@@ -1,0 +1,43 @@
+name: Release on manifest.json version change
+
+on:
+  push:
+    paths:
+      - 'custom_components/broadlink_manager/manifest.json'
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Read version from manifest.json
+        id: read_version
+        run: |
+          VERSION=$(cat custom_components/broadlink_manager/manifest.json | python3 -c 'import json,sys; print(json.load(sys.stdin)["version"])')
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+
+      - name: Create Release and Upload Asset
+        uses: ncipollo/release-action@v1
+        with:
+          tag: v${{ env.VERSION }}
+          name: Release v${{ env.VERSION }}
+          body: "Automatic release for version v${{ env.VERSION }}"
+          draft: false
+          prerelease: false
+          artifacts: ./broadlink_manager_v${{ env.VERSION }}.zip
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Zip Files
+        run: |
+          zip -r broadlink_manager_v${{ env.VERSION }}.zip custom_components/broadlink_manager/
