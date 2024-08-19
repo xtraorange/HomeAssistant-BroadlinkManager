@@ -4,6 +4,7 @@ from homeassistant.core import callback
 from homeassistant.helpers import device_registry as dr
 import voluptuous as vol
 from .const import DOMAIN
+from .codes_manager import CodesManager  # Import the CodesManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -43,6 +44,13 @@ class BroadlinkManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
         if user_input is not None:
             selected_device = devices_dict[user_input["device_name"]]
+
+            # Initialize the CodesManager if it doesn't exist
+            mac_address = selected_device["mac_address"]
+            codes_manager = await CodesManager.get_or_create(self.hass, mac_address)
+
+            _LOGGER.debug(f"Loaded codes for device: {codes_manager.get_all_devices()}")
+
             # Store the selected device's information and create an entry
             return self.async_create_entry(
                 title=selected_device["name"],

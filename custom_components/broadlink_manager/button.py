@@ -3,10 +3,9 @@ from homeassistant.components.button import ButtonEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
 from .const import DOMAIN
+from .codes_manager import CodesManager
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers import (
-    entity_registry as er,
-)  # Correct import for entity registry
+from homeassistant.helpers import entity_registry as er
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -21,11 +20,14 @@ async def async_setup_entry(
 ):
     """Set up Broadlink Manager devices and their commands."""
 
-    devices = hass.data[DOMAIN][config_entry.entry_id]
     mac_address = config_entry.data.get("mac_address")
+
+    codes_manager = await CodesManager.get_or_create(hass, mac_address)
+
     entities = []
 
-    for device_name, commands in devices.items():
+    for device_name in codes_manager.get_all_devices():
+        commands = codes_manager.get_device_codes(device_name)
         _LOGGER.debug(f"Setting up buttons for device: {device_name}")
 
         if not commands:

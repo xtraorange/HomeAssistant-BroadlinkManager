@@ -1,8 +1,6 @@
 import logging
 from homeassistant.helpers import device_registry as dr
-from homeassistant.helpers.storage import Store
-from homeassistant.config_entries import ConfigEntry
-
+from .codes_manager import CodesManager  # Import the new CodesManager
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,35 +18,21 @@ async def async_setup_entry(hass, entry):
     # Get the MAC address of the hub from the config entry data
     mac_address = entry.data.get("mac_address")
 
-    # Construct the path to the codes file within the .storage directory
-    store = Store(hass, 1, f"broadlink_remote_{mac_address}_codes")
-    _LOGGER.debug("Attempting to access %s", store.path)
+    # Check if a CodesManager already exists or create a new one
+    codes_manager = await CodesManager.get_or_create(hass, mac_address)
 
-    # Attempt to read the codes file asynchronously
-    codes = await store.async_load()
-    if codes:
-        _LOGGER.debug("Codes have successfully loaded.")
-        _LOGGER.debug(codes)
-
-        # Register each controlled device as a separate device
-        device_registry = dr.async_get(hass)
-        for device_name, commands in codes.items():
-            unique_id = f"{mac_address}_{device_name}"
-            device_registry.async_get_or_create(
-                config_entry_id=entry.entry_id,
-                identifiers={(DOMAIN, unique_id)},
-                manufacturer="Broadlink-Controlled",
-                model=device_name,
-                name=device_name,
-            )
-            _LOGGER.debug(f"Registered controlled device: {device_name}")
-
-        # Save the loaded codes in hass.data for use by the button entity
-        hass.data[DOMAIN][entry.entry_id] = codes
-
-    else:
-        _LOGGER.error("Failed to load codes from %s", store.path)
-        return False
+    # Register each controlled device as a separate device in Home Assistant
+    device_registry = dr.async_get(hass)
+    for device_name in codes_manager.get_all_devices():
+        unique_id = f"{mac_address}_{device_name}"
+        device_registry.async_get_or_create(
+            config_entry_id=entry.entry_id,
+            identifiers={(DOMAIN, unique_id)},
+            manufacturer="Broadlink-Controlled",
+            model=device_name,
+            name=device_name,
+        )
+        _LOGGER.debug(f"Registered controlled device: {device_name}")
 
     # Forward entry setup for the button platform
     await hass.config_entries.async_forward_entry_setups(entry, ["button"])
