@@ -9,12 +9,13 @@ from .const import DOMAIN
 class CodesManager:
     def __init__(self, hass, mac_address):
         self.hass = hass
-        self.mac_address = mac_address
-        self.store = Store(hass, 1, f"broadlink_remote_{mac_address}_codes")
+        self.mac_address = mac_address.lower()  # Normalize to lowercase
+        self.store = Store(hass, 1, f"broadlink_remote_{self.mac_address}_codes")
         self.file_path = self.store.path
         self.file_name = os.path.basename(self.file_path)
         self.data = None
         self.last_modified = None
+        self._on_change_callback = None  # Initialize the callback
         self._start_file_watcher()
 
     async def async_initialize(self):
@@ -23,7 +24,6 @@ class CodesManager:
     async def _load_data(self):
         data = await self.store.async_load()
         if data is None:
-            # Initialize an empty structure if nothing is loaded
             data = {
                 "version": 1,
                 "minor_version": 1,
@@ -31,15 +31,23 @@ class CodesManager:
                 "data": {},
             }
         elif not isinstance(data, dict) or "data" not in data:
-            # If the structure is flat (i.e., devices are at the top level), assume it's only the devices
             data = {
                 "version": 1,
                 "minor_version": 1,
                 "key": f"broadlink_remote_{self.mac_address}_codes",
-                "data": data,  # Place the flat data into the "data" key
+                "data": data,
             }
         self.data = data
         self.last_modified = os.path.getmtime(self.file_path)
+        # Trigger the callback if data has changed
+        if self._on_change_callback:
+            self.hass.loop.call_soon_threadsafe(
+                self.hass.async_create_task, self._on_change_callback()
+            )
+
+    def set_on_change_callback(self, callback):
+        """Set the callback to be triggered when the codes file changes."""
+        self._on_change_callback = callback
 
     async def save_data(self):
         await self.store.async_save(self.data)
@@ -59,7 +67,10 @@ class CodesManager:
 
         def on_modified(self, event):
             if event.src_path == self.manager.file_path:
-                self.manager.hass.async_create_task(self.manager._load_data())
+                # Use the event loop to safely schedule the task
+                self.manager.hass.loop.call_soon_threadsafe(
+                    self.manager.hass.async_create_task, self.manager._load_data()
+                )
                 print(f"Codes file {self.manager.file_name} has been updated.")
 
     def get_all_devices(self):
@@ -125,7 +136,7 @@ class CodesManager:
 
     @staticmethod
     async def get_or_create(hass, mac_address):
-        # Ensure DOMAIN is initialized in hass.data
+        mac_address = mac_address.lower()  # Ensure it's lowercase
         if DOMAIN not in hass.data:
             hass.data[DOMAIN] = {}
 

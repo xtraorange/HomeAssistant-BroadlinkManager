@@ -1,40 +1,38 @@
 import logging
-from homeassistant.helpers import device_registry as dr
-from .codes_manager import CodesManager  # Import the new CodesManager
+from homeassistant.config_entries import ConfigEntry
+from homeassistant.core import HomeAssistant
+from .device_manager import DeviceManager
+from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 
-DOMAIN = "broadlink_manager"
 
-
-async def async_setup_entry(hass, entry):
+async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry):
     """Set up Broadlink Manager from a config entry."""
-    _LOGGER.debug("Setting up Broadlink Manager for entry: %s", entry.title)
+    device_manager = DeviceManager(hass, entry.data.get("mac_address"), entry)
+    await device_manager.initialize()
 
-    # Initialize the DOMAIN in hass.data if it does not exist
+    # Store the device manager in Home Assistant data
     if DOMAIN not in hass.data:
         hass.data[DOMAIN] = {}
+    hass.data[DOMAIN][entry.entry_id] = device_manager
 
-    # Get the MAC address of the hub from the config entry data
-    mac_address = entry.data.get("mac_address")
+    # Forward entry setup to the platform (button)
+    await hass.config_entries.async_forward_entry_setup(entry, "button")
 
-    # Check if a CodesManager already exists or create a new one
-    codes_manager = await CodesManager.get_or_create(hass, mac_address)
+    return True
 
-    # Register each controlled device as a separate device in Home Assistant
-    device_registry = dr.async_get(hass)
-    for device_name in codes_manager.get_all_devices():
-        unique_id = f"{mac_address}_{device_name}"
-        device_registry.async_get_or_create(
-            config_entry_id=entry.entry_id,
-            identifiers={(DOMAIN, unique_id)},
-            manufacturer="Broadlink-Controlled",
-            model=device_name,
-            name=device_name,
-        )
-        _LOGGER.debug(f"Registered controlled device: {device_name}")
 
-    # Forward entry setup for the button platform
-    await hass.config_entries.async_forward_entry_setups(entry, ["button"])
+async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry):
+    """Unload a config entry."""
+    _LOGGER.debug("Unloading Broadlink Manager for entry: %s", entry.title)
+
+    # Unload the button platform
+    await hass.config_entries.async_forward_entry_unload(entry, "button")
+
+    # Remove device manager from Home Assistant data
+    device_manager = hass.data[DOMAIN].pop(entry.entry_id, None)
+    if device_manager:
+        await device_manager.cleanup_entities()
 
     return True
