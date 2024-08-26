@@ -4,19 +4,20 @@ from watchdog.observers import Observer
 from watchdog.events import FileSystemEventHandler
 from homeassistant.helpers.storage import Store
 from .const import DOMAIN
+from .helpers.file_watcher import FileWatcher
 
 
 class CodesManager:
     def __init__(self, hass, mac_address):
         self.hass = hass
-        self.mac_address = mac_address.lower()  # Normalize to lowercase
+        self.mac_address = mac_address.lower()
         self.store = Store(hass, 1, f"broadlink_remote_{self.mac_address}_codes")
         self.file_path = self.store.path
         self.file_name = os.path.basename(self.file_path)
         self.data = None
         self.last_modified = None
-        self._on_change_callback = None  # Initialize the callback
-        self._start_file_watcher()
+        self._on_change_callback = None
+        self.file_watcher = FileWatcher(self.file_path, self._on_file_change)
 
     async def async_initialize(self):
         await self._load_data()
@@ -39,39 +40,22 @@ class CodesManager:
             }
         self.data = data
         self.last_modified = os.path.getmtime(self.file_path)
-        # Trigger the callback if data has changed
         if self._on_change_callback:
             self.hass.loop.call_soon_threadsafe(
                 self.hass.async_create_task, self._on_change_callback()
             )
 
     def set_on_change_callback(self, callback):
-        """Set the callback to be triggered when the codes file changes."""
         self._on_change_callback = callback
 
     async def save_data(self):
         await self.store.async_save(self.data)
         self.last_modified = os.path.getmtime(self.file_path)
 
-    def _start_file_watcher(self):
-        event_handler = self._FileChangeHandler(self)
-        observer = Observer()
-        observer.schedule(
-            event_handler, path=os.path.dirname(self.file_path), recursive=False
+    def _on_file_change(self):
+        self.hass.loop.call_soon_threadsafe(
+            self.hass.async_create_task, self._load_data()
         )
-        observer.start()
-
-    class _FileChangeHandler(FileSystemEventHandler):
-        def __init__(self, manager):
-            self.manager = manager
-
-        def on_modified(self, event):
-            if event.src_path == self.manager.file_path:
-                # Use the event loop to safely schedule the task
-                self.manager.hass.loop.call_soon_threadsafe(
-                    self.manager.hass.async_create_task, self.manager._load_data()
-                )
-                print(f"Codes file {self.manager.file_name} has been updated.")
 
     def get_all_devices(self):
         if self.data is None:
@@ -136,15 +120,13 @@ class CodesManager:
 
     @staticmethod
     async def get_or_create(hass, mac_address):
-        mac_address = mac_address.lower()  # Ensure it's lowercase
+        mac_address = mac_address.lower()
         if DOMAIN not in hass.data:
             hass.data[DOMAIN] = {}
-
         if mac_address not in hass.data[DOMAIN]:
             codes_manager = CodesManager(hass, mac_address)
             await codes_manager.async_initialize()
             hass.data[DOMAIN][mac_address] = codes_manager
         else:
             codes_manager = hass.data[DOMAIN][mac_address]
-
         return codes_manager

@@ -2,6 +2,7 @@ import logging
 from homeassistant.helpers import device_registry as dr, entity_registry as er
 from .codes_manager import CodesManager
 from .command_button import CommandButton
+from .helpers.utils import format_name
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -19,40 +20,43 @@ class DeviceManager:
         )
         self.codes_manager.set_on_change_callback(self.reload_devices_and_commands)
 
-    async def setup_all_entities(self, async_add_entities):
+    async def initialize_entities(self, async_add_entities):
         entities = []
 
         for device_name in self.codes_manager.get_all_devices():
+            formatted_device_name = format_name(device_name)
             commands = self.codes_manager.get_device_codes(device_name)
             for command_name, command_data in commands.items():
+                formatted_command_name = format_name(command_name)
                 unique_id = f"{self.mac_address}_{device_name}_{command_name}"
                 entities.append(
                     CommandButton(
                         mac_address=self.mac_address,
-                        device_name=device_name,
-                        command_name=command_name,
+                        device_name=device_name,  # Saving original device name
+                        command_name=command_name,  # Saving original command name
+                        formatted_device_name=formatted_device_name,
+                        formatted_command_name=formatted_command_name,
                         command_data=command_data,
                         unique_id=unique_id,
                         config_entry=self.config_entry,
                     )
                 )
+        async_add_entities(entities)
 
-        if entities:
-            async_add_entities(entities)
-
-    async def cleanup_entities(self):
-        """Clean up existing entities related to the Broadlink device."""
+    async def remove_entities(self):
+        """Remove existing entities related to the Broadlink device, but not the main Broadlink hub."""
         _LOGGER.debug("Cleaning up devices and buttons for MAC: %s", self.mac_address)
 
         device_registry = dr.async_get(self.hass)
         entity_registry = er.async_get(self.hass)
 
-        # Find and remove devices and their entities
+        # Only remove devices and entities that were created by this custom integration
         devices_to_remove = [
             device_entry
             for device_entry in device_registry.devices.values()
             if any(
-                self.mac_address in identifier[1]
+                identifier[1] != self.mac_address
+                and identifier[1].startswith(self.mac_address + "_")
                 for identifier in device_entry.identifiers
             )
         ]
@@ -64,7 +68,7 @@ class DeviceManager:
         entities_to_remove = [
             entity_entry
             for entity_entry in entity_registry.entities.values()
-            if entity_entry.unique_id.startswith(self.mac_address)
+            if entity_entry.unique_id.startswith(self.mac_address + "_")
         ]
 
         for entity_entry in entities_to_remove:
@@ -81,8 +85,11 @@ class DeviceManager:
             "Reloading devices and commands due to file change for MAC: %s",
             self.mac_address,
         )
-        await self.cleanup_entities()
 
+        # Ensure existing entities are removed before re-adding
+        await self.remove_entities()
+
+        # Re-add the entities
         platforms = self.hass.helpers.entity_platform.async_get_platforms(
             self.hass, "broadlink_manager"
         )

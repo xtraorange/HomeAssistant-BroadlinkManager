@@ -12,4 +12,6 @@ async def async_setup_entry(
 ):
     """Set up Broadlink Manager button entities."""
     device_manager = hass.data[DOMAIN][config_entry.entry_id]
-    await device_manager.setup_all_entities(async_add_entities)
+    await device_manager.initialize_entities(
+        async_add_entities
+    )  # Use the correct method name

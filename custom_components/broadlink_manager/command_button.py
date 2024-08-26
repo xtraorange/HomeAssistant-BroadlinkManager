@@ -13,21 +13,25 @@ class CommandButton(ButtonEntity):
         mac_address,
         device_name,
         command_name,
+        formatted_device_name,
+        formatted_command_name,
         command_data,
         unique_id,
         config_entry,
     ):
         self._mac_address = mac_address
-        self._device_name = device_name
-        self._command_name = command_name
+        self._device_name = device_name  # Original device name
+        self._command_name = command_name  # Original command name
+        self._formatted_device_name = formatted_device_name
+        self._formatted_command_name = formatted_command_name
         self._command_data = command_data
-        self._attr_name = f"{device_name} {command_name} Button"
+        self._attr_name = f"{formatted_device_name} {formatted_command_name} Button"
         self._attr_unique_id = unique_id
         self._attr_device_info = {
             "identifiers": {
                 (dr.CONNECTION_NETWORK_MAC, f"{mac_address}_{device_name}")
             },
-            "name": device_name,
+            "name": formatted_device_name,
             "manufacturer": "Broadlink",
             "model": "Controlled Device",
             "sw_version": "1.0",
@@ -75,7 +79,7 @@ class CommandButton(ButtonEntity):
             _LOGGER.error(f"Could not find remote entity for device: {device.name}")
             return
 
-        # Build the service data
+        # Build the service data using original device and command names
         service_data = {
             "entity_id": remote_entity_id,
             "device": self._device_name,

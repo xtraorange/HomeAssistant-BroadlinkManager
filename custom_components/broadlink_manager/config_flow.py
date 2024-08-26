@@ -1,10 +1,10 @@
 import logging
 from homeassistant import config_entries
 from homeassistant.core import callback
-from homeassistant.helpers import device_registry as dr
 import voluptuous as vol
 from .const import DOMAIN
-from .codes_manager import CodesManager  # Import the CodesManager
+from .codes_manager import CodesManager
+from .broadlink_hub import BroadlinkHub
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -17,25 +17,10 @@ class BroadlinkManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
     async def async_step_user(self, user_input=None):
         """Handle the initial step where the user selects a Broadlink device."""
+        errors = {}
 
-        # Access the device registry
-        device_registry = dr.async_get(self.hass)
-
-        # Find Broadlink devices that match the desired criteria
-        devices = []
-        for device_entry in device_registry.devices.values():
-            _LOGGER.debug(f"Device Entry: {device_entry.identifiers}")
-            for identifier in device_entry.identifiers:
-                if "broadlink" in identifier:
-                    _LOGGER.debug(f"Broadlink Device Found: {device_entry.name}")
-                    devices.append(
-                        {
-                            "name": device_entry.name
-                            or identifier[1],  # Use MAC if no name
-                            "id": device_entry.id,
-                            "mac_address": identifier[1],  # Capture the MAC address
-                        }
-                    )
+        # Find registered Broadlink devices using BroadlinkHub
+        devices = BroadlinkHub.find_registered_devices(self.hass)
 
         if not devices:
             return self.async_abort(reason="no_broadlink_devices_found")
@@ -68,7 +53,9 @@ class BroadlinkManagerConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             }
         )
 
-        return self.async_show_form(step_id="user", data_schema=data_schema, errors={})
+        return self.async_show_form(
+            step_id="user", data_schema=data_schema, errors=errors
+        )
 
 
 class BroadlinkManagerOptionsFlowHandler(config_entries.OptionsFlow):
